@@ -5,6 +5,7 @@ Servidor Flask para integrar el Agente de Despensa con WhatsApp usando Meta What
 import os
 import requests
 import tempfile
+import json
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from despensa_agent import run_agent
@@ -59,12 +60,29 @@ def send_whatsapp_message(to: str, message: str):
     }
     
     try:
+        print(f"\n📤 Enviando mensaje a WhatsApp:")
+        print(f"   Para: {phone_number}")
+        print(f"   URL: {WHATSAPP_API_URL}")
+        print(f"   Mensaje: {message[:50]}..." if len(message) > 50 else f"   Mensaje: {message}")
+        
         response = requests.post(WHATSAPP_API_URL, headers=headers, json=payload)
-        response.raise_for_status()
-        return True
+        
+        print(f"   Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            print(f"✅ Mensaje enviado correctamente")
+            print(f"   Respuesta: {response.json()}")
+            return True
+        else:
+            print(f"❌ Error en respuesta: {response.status_code}")
+            print(f"   Respuesta: {response.text}")
+            response.raise_for_status()
+            return False
+            
     except requests.exceptions.RequestException as e:
         print(f"❌ Error enviando mensaje a WhatsApp: {e}")
         if hasattr(e, 'response') and e.response is not None:
+            print(f"   Status Code: {e.response.status_code}")
             print(f"   Respuesta: {e.response.text}")
         return False
 
@@ -140,6 +158,38 @@ def verify_webhook():
         return "Forbidden", 403
 
 
+@app.route("/debug", methods=["GET", "POST"])
+def debug_endpoint():
+    """
+    Endpoint de debug para ver los datos recibidos (similar a n8n).
+    """
+    if request.method == "GET":
+        return jsonify({
+            "status": "debug_endpoint_active",
+            "message": "Envía un POST con datos para verlos aquí",
+            "webhook_url": "/webhook"
+        })
+    
+    # Mostrar datos recibidos de forma legible
+    data = request.get_json() if request.is_json else request.form.to_dict()
+    headers = dict(request.headers)
+    
+    debug_info = {
+        "method": request.method,
+        "headers": headers,
+        "data": data,
+        "raw_data": request.get_data(as_text=True) if not request.is_json else None
+    }
+    
+    print("\n" + "="*70)
+    print("🔍 DEBUG ENDPOINT - Datos recibidos")
+    print("="*70)
+    print(json.dumps(debug_info, indent=2, ensure_ascii=False))
+    print("="*70 + "\n")
+    
+    return jsonify(debug_info)
+
+
 @app.route("/webhook", methods=["POST"])
 def handle_webhook():
     """
@@ -148,21 +198,55 @@ def handle_webhook():
     try:
         data = request.get_json()
         
+        # Log detallado para debugging (similar a n8n)
+        print("\n" + "="*70)
+        print("📥 WEBHOOK RECIBIDO")
+        print("="*70)
+        print("📦 Datos completos recibidos:")
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        print("="*70 + "\n")
+        
         if not data:
+            print("⚠️  No se recibieron datos")
             return jsonify({"status": "error", "message": "No data received"}), 400
         
         # WhatsApp envía notificaciones en 'entry'
-        if "object" not in data or data["object"] != "whatsapp_business_account":
+        if "object" not in data:
+            print(f"⚠️  Objeto no encontrado en datos. Keys: {data.keys()}")
+            return jsonify({"status": "ok"}), 200
+        
+        if data["object"] != "whatsapp_business_account":
+            print(f"⚠️  Objeto no es whatsapp_business_account: {data.get('object')}")
             return jsonify({"status": "ok"}), 200
         
         entries = data.get("entry", [])
+        print(f"📋 Entradas encontradas: {len(entries)}")
+        
+        if not entries:
+            print("⚠️  No hay entradas en el webhook")
+            print("💡 Esto puede ser normal si es solo una notificación de estado")
+            return jsonify({"status": "ok"}), 200
         
         for entry in entries:
             changes = entry.get("changes", [])
+            print(f"🔄 Cambios encontrados: {len(changes)}")
             
             for change in changes:
                 value = change.get("value", {})
+                print(f"\n📊 Estructura del cambio:")
+                print(f"   Keys disponibles: {list(value.keys())}")
+                print(f"   Cambio completo: {json.dumps(change, indent=2, ensure_ascii=False)}")
+                
+                # Verificar si hay mensajes
                 messages = value.get("messages", [])
+                print(f"\n💬 Mensajes encontrados: {len(messages)}")
+                
+                if not messages:
+                    # Puede ser una notificación de estado, no un mensaje nuevo
+                    statuses = value.get("statuses", [])
+                    if statuses:
+                        print(f"📊 Notificación de estado recibida: {statuses}")
+                    continue
                 
                 for message in messages:
                     # Obtener información del mensaje
@@ -170,9 +254,19 @@ def handle_webhook():
                     message_id = message.get("id")
                     message_type = message.get("type")
                     
+                    print(f"\n📨 Procesando mensaje:")
+                    print(f"   De: {from_number}")
+                    print(f"   ID: {message_id}")
+                    print(f"   Tipo: {message_type}")
+                    
+                    if not from_number:
+                        print("⚠️  No se encontró número de teléfono en el mensaje")
+                        continue
+                    
                     # Obtener o crear historial de conversación
                     if from_number not in chat_histories:
                         chat_histories[from_number] = []
+                        print(f"✅ Nuevo historial creado para {from_number}")
                     
                     chat_history = chat_histories[from_number]
                     
@@ -180,35 +274,44 @@ def handle_webhook():
                     if message_type == "text":
                         # Mensaje de texto
                         text_body = message.get("text", {}).get("body", "")
+                        print(f"📝 Texto recibido: {text_body}")
                         process_text_message(from_number, text_body, chat_history)
                     
                     elif message_type == "audio" or message_type == "voice":
                         # Mensaje de audio
+                        print("🎤 Procesando mensaje de audio...")
                         audio_data = message.get("audio") or message.get("voice")
                         if audio_data:
                             media_id = audio_data.get("id")
                             mime_type = audio_data.get("mime_type", "audio/ogg")
                             process_audio_message(from_number, media_id, mime_type, chat_history)
+                        else:
+                            print("⚠️  No se encontraron datos de audio")
                     
                     elif message_type == "image":
                         # Mensaje de imagen
+                        print("🖼️  Procesando mensaje de imagen...")
                         image_data = message.get("image", {})
                         if image_data:
                             media_id = image_data.get("id")
                             mime_type = image_data.get("mime_type", "image/jpeg")
                             process_image_message(from_number, media_id, mime_type, chat_history)
+                        else:
+                            print("⚠️  No se encontraron datos de imagen")
                     
                     else:
                         # Tipo de mensaje no soportado
+                        print(f"⚠️  Tipo de mensaje no soportado: {message_type}")
                         send_whatsapp_message(
                             from_number,
                             "Lo siento, solo puedo procesar mensajes de texto, audio e imágenes."
                         )
         
+        print("\n✅ Webhook procesado correctamente\n")
         return jsonify({"status": "ok"}), 200
     
     except Exception as e:
-        print(f"❌ Error procesando webhook: {e}")
+        print(f"\n❌ Error procesando webhook: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -339,10 +442,20 @@ if __name__ == "__main__":
     print(f"📡 Webhook URL: https://tu-dominio.com/webhook")
     print(f"🔐 Verify Token: {WHATSAPP_VERIFY_TOKEN}")
     print(f"🌐 Puerto: {PORT}")
-    print("\n💡 Para desarrollo local, usa ngrok:")
+    print(f"\n🔍 Endpoints disponibles:")
+    print(f"   - POST /webhook (webhook principal de WhatsApp)")
+    print(f"   - GET/POST /debug (endpoint de debug para ver datos)")
+    print(f"\n💡 Para desarrollo local, usa ngrok:")
     print(f"   ngrok http {PORT}")
     print("   Luego configura el webhook en Meta con: https://tu-url-ngrok.ngrok.io/webhook")
     print("\n⚠️  Si el puerto está en uso, cambia FLASK_PORT en .env o desactiva AirPlay Receiver")
+    
+    # Verificar credenciales
+    print(f"\n🔑 Verificación de credenciales:")
+    print(f"   ✅ WHATSAPP_VERIFY_TOKEN: {'Configurado' if WHATSAPP_VERIFY_TOKEN else '❌ NO CONFIGURADO'}")
+    print(f"   {'✅' if WHATSAPP_TOKEN else '❌'} WHATSAPP_TOKEN: {'Configurado' if WHATSAPP_TOKEN else 'NO CONFIGURADO (necesario para enviar mensajes)'}")
+    print(f"   {'✅' if WHATSAPP_PHONE_NUMBER_ID else '❌'} WHATSAPP_PHONE_NUMBER_ID: {'Configurado' if WHATSAPP_PHONE_NUMBER_ID else 'NO CONFIGURADO (necesario para enviar mensajes)'}")
+    print(f"   {'✅' if os.getenv('OPENAI_API_KEY') else '❌'} OPENAI_API_KEY: {'Configurado' if os.getenv('OPENAI_API_KEY') else 'NO CONFIGURADO (necesario para el agente)'}")
     
     # Ejecutar servidor
     app.run(host="0.0.0.0", port=PORT, debug=True)

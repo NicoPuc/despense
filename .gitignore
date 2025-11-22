@@ -3,3 +3,5 @@ node_modules/
 dist/
 .nx/
 .next/
+despense-agent/__pycache__
+despense-agent/.env

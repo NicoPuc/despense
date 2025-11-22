@@ -26,6 +26,12 @@ openai>=2.0.0             # SDK oficial de OpenAI
                           # - Chat API (usado por langchain-openai)
 
 # ----------------------------------------------------------------------------
+# Servidor Web - Para integración con WhatsApp
+# ----------------------------------------------------------------------------
+flask>=3.0.0              # Framework web para recibir webhooks de WhatsApp
+requests>=2.31.0          # Cliente HTTP para comunicarse con WhatsApp API
+
+# ----------------------------------------------------------------------------
 # Utilidades
 # ----------------------------------------------------------------------------
 python-dotenv>=1.0.0      # Para cargar variables de entorno desde .env

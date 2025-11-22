@@ -1,0 +1,41 @@
+# ============================================================================
+# Agente de Despensa - Requirements
+# ============================================================================
+# Compatible con Python 3.10, 3.11, 3.12 y 3.13
+# 
+# Para instalar:
+#   pip install -r requirements.txt
+#
+# Nota: Si usas Python 3.13 y encuentras problemas, considera usar Python 3.12
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# LangChain y LangGraph - Framework para agentes conversacionales
+# ----------------------------------------------------------------------------
+langchain>=1.0.0          # Framework principal de LangChain
+langchain-openai>=1.0.0    # Integración con OpenAI para ChatOpenAI
+langchain-core>=1.0.0      # Componentes core de LangChain
+langgraph>=1.0.0          # Framework para construir grafos de agentes
+
+# ----------------------------------------------------------------------------
+# OpenAI SDK - Para APIs multimodales (Whisper y Vision)
+# ----------------------------------------------------------------------------
+openai>=2.0.0             # SDK oficial de OpenAI
+                          # - Whisper API para transcripción de audio
+                          # - Vision API para procesamiento de imágenes
+                          # - Chat API (usado por langchain-openai)
+
+# ----------------------------------------------------------------------------
+# Utilidades
+# ----------------------------------------------------------------------------
+python-dotenv>=1.0.0      # Para cargar variables de entorno desde .env
+typing-extensions>=4.9.0   # Extensiones de tipos para Python
+
+# ----------------------------------------------------------------------------
+# Dependencias transitivas (se instalan automáticamente)
+# ----------------------------------------------------------------------------
+# langgraph-checkpoint    # Para persistencia de estado
+# langgraph-prebuilt      # Componentes pre-construidos (ToolNode, etc.)
+# langgraph-sdk           # SDK para LangGraph
+# typing-inspection       # Utilidades de inspección de tipos
+
